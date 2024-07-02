@@ -1,0 +1,130 @@
+# chatwoot-deployment.yml
+
+# Define the deployment for the Chatwoot application
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chatwoot-deployment
+spec:
+  replicas: 5 # Set the number of replicas to 5
+  selector:
+    matchLabels:
+      app: chatwoot
+  template:
+    metadata:
+      labels:
+        app: chatwoot
+    spec:
+      containers:
+      - name: chatwoot
+        image: chatwoot/chatwoot:latest # Use the latest Chatwoot image
+        ports:
+        - containerPort: 3000 # Define the port on which the container listens
+
+# Define the service to expose the Chatwoot deployment
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: chatwoot-service
+spec:
+  selector:
+    app: chatwoot
+  ports:
+    - protocol: TCP
+      port: 80 # Expose the service on port 80
+      targetPort: 3000 # Map the service port to the container port
+  type: ClusterIP # Use ClusterIP for internal access only
+
+# Define a ConfigMap to provide environment variables to the Chatwoot application
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: chatwoot-config
+data:
+  # Example environment variables
+  CHATWOOT_ENV: production
+  DATABASE_URL: postgres://user:password@hostname:5432/chatwoot_production
+  REDIS_URL: redis://user:password@hostname:6379/0
+
+# Define a Secret to securely provide sensitive information to the Chatwoot application
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: chatwoot-secret
+type: Opaque
+data:
+  # Encode secrets using base64
+  SECRET_KEY_BASE: c2VjcmV0X2tleV9iYXNl # Replace with your actual secret, base64-encoded
+  DATABASE_PASSWORD: cGFzc3dvcmQ= # Replace with your actual password, base64-encoded
+
+# Attach ConfigMap and Secret to the Deployment
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chatwoot-deployment
+spec:
+  replicas: 5
+  selector:
+    matchLabels:
+      app: chatwoot
+  template:
+    metadata:
+      labels:
+        app: chatwoot
+    spec:
+      containers:
+      - name: chatwoot
+        image: chatwoot/chatwoot:latest
+        ports:
+        - containerPort: 3000
+        env:
+        - name: CHATWOOT_ENV
+          valueFrom:
+            configMapKeyRef:
+              name: chatwoot-config
+              key: CHATWOOT_ENV
+        - name: DATABASE_URL
+          valueFrom:
+            configMapKeyRef:
+              name: chatwoot-config
+              key: DATABASE_URL
+        - name: REDIS_URL
+          valueFrom:
+            configMapKeyRef:
+              name: chatwoot-config
+              key: REDIS_URL
+        - name: SECRET_KEY_BASE
+          valueFrom:
+            secretKeyRef:
+              name: chatwoot-secret
+              key: SECRET_KEY_BASE
+        - name: DATABASE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: chatwoot-secret
+              key: DATABASE_PASSWORD
+
+# Define an Ingress to expose the Chatwoot service at the specified URL
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: chatwoot-ingress
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  rules:
+  - host: whitelabel.multichannel.pt
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: chatwoot-service
+            port:
+              number: 80
